@@ -1,0 +1,29 @@
+package in.strikes.docmind_backend.dto;
+import in.strikes.docmind_backend.entity.DocumentStatus;
+import jakarta.persistence.*;
+import lombok.*;
+
+import java.time.LocalDateTime;
+import java.util.UUID;
+
+
+@Setter
+@Getter
+@AllArgsConstructor
+@NoArgsConstructor
+@Builder
+public class DocumentMetadataDto {
+
+    private UUID id;
+    private  String filename;
+    private  String contentType;
+    private  Long fileSize;
+    private Integer totalPages;
+    private  Integer totalChunks;
+    private DocumentStatus status;
+    private  String errorMessage;
+    private LocalDateTime createdAt;
+    private  LocalDateTime updatedAt;
+
+
+}
