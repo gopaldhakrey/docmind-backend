@@ -1,4 +1,7 @@
 package in.strikes.docmind_backend.controlller;
+import in.strikes.docmind_backend.dto.ForgotPasswordRequest;
+import in.strikes.docmind_backend.dto.ResetPasswordRequest;
+import in.strikes.docmind_backend.service.PasswordResetService;
 import in.strikes.docmind_backend.dto.LoginRequest;
 import  in.strikes.docmind_backend.dto.LoginResponse;
 import  in.strikes.docmind_backend.dto.RegisterUserRequest;
@@ -27,6 +30,8 @@ public class AuthController {
 
     private final UserService userService;
 
+    private final PasswordResetService passwordResetService;
+
     private final AuthenticationManager authenticationManager;
 
     private final UserRepository userRepository;
@@ -37,7 +42,7 @@ public class AuthController {
     public ResponseEntity<LoginResponse> login(
             @RequestBody LoginRequest loginRequest
     ) {
-        //TODO
+
         //authenticate and return the token and user
         Authentication authentication = new UsernamePasswordAuthenticationToken(
                 loginRequest.username(),
@@ -59,6 +64,29 @@ public class AuthController {
         return ResponseEntity.status(HttpStatus.CREATED).body(userDto);
 
     }
+    @PostMapping("/forgot-password")
+    public ResponseEntity<String> forgotPassword(
+            @Valid @RequestBody ForgotPasswordRequest request
+    ) {
+        passwordResetService.createResetToken(request.getEmail());
+
+        return ResponseEntity.ok(
+                "If an account exists with this email, a password reset link has been sent."
+        );
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<String> resetPassword(
+            @Valid @RequestBody ResetPasswordRequest request
+    ) {
+        passwordResetService.resetPassword(
+                request.getToken(),
+                request.getNewPassword()
+        );
+
+        return ResponseEntity.ok("Password reset successfully");
+    }
+
 
 
 }

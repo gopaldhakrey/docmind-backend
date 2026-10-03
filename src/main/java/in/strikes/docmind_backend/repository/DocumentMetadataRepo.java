@@ -22,6 +22,8 @@ public interface DocumentMetadataRepo extends JpaRepository<DocumentMetadata, UU
 
     Optional<DocumentMetadata> findByIdAndUser(UUID id, User user);
 
+    List<DocumentMetadata> findByUser(User user);
+
 
 
 

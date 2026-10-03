@@ -28,6 +28,9 @@ public class ChatMessage {
     @Column(columnDefinition = "TEXT", nullable = false)
     private String content;
 
+    @Column(columnDefinition = "TEXT")
+    private String metadata;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

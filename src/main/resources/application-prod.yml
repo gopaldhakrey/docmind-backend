@@ -1,18 +1,16 @@
-# database configurations
-
 spring:
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5434}/${DB_NAME:docmind}
-    username: ${DB_USER:postgres}
-    password: ${DB_PASSWORD:postgres}
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT:5432}/${DB_NAME}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
 
   jpa:
     hibernate:
       ddl-auto: update
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
-        format_sql: true
+        format_sql: false
 
   mail:
     host: smtp.gmail.com
@@ -24,17 +22,15 @@ spring:
         smtp:
           auth: true
           starttls:
-            enable: true 
+            enable: true
 
   ai:
     google:
       genai:
         api-key: ${GEMINI_API_KEY}
-
         chat:
           model: ${GEMINI_CHAT_MODEL:gemini-3.6-flash}
           temperature: 0.2
-
         embedding:
           api-key: ${GEMINI_API_KEY}
           text:
@@ -55,38 +51,25 @@ spring:
       max-file-size: 25MB
       max-request-size: 50MB
 
-
-# app configuration
 app:
-  frontend-url: ${FRONTEND_URL:http://localhost:5173}
+  frontend-url: ${FRONTEND_URL}
   rag:
     chunk-size: 700
-    #chunk-overlap: 100
     top-k: 5
     similarity_threshold: 0.0
 
   cors:
-    allowed-origins: "*"
-    allowed-methods: GET,POST,PUT,PATCH,DELETE,OPTION
+    allowed-origins: ${CORS_ALLOWED_ORIGINS}
+    allowed-methods: GET,POST,PUT,PATCH,DELETE,OPTIONS
     allowed-headers: "*"
-
-
-  #JWT Authentication
 
 jwt:
   secret: ${JWT_SECRET}
-  expiration: 3600000
+  expiration: ${JWT_EXPIRATION:3600000}
 
-
-bootui:
-  enabled: ON
-
+server:
+  port: ${PORT:8081}
 
 logging:
   level:
-    org:
-      springframework:
-        ai:
-          chat:
-            client:
-              advisor: DEBUG
+    root: INFO

@@ -11,7 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
-
+import com.fasterxml.jackson.core.JsonProcessingException;
 import javax.naming.directory.SearchResult;
 import java.time.LocalDateTime;
 
@@ -30,8 +30,7 @@ public class ChatController {
     @Operation(summary = "Ask a question against all documents or a specific document with citations")
     public ResponseEntity<ApiResponse<ChatResponseDto>> askQuestion(
             @Valid @RequestBody ChatRequestDto requestDto,
-            Authentication authentication
-    ) {
+            Authentication authentication) throws JsonProcessingException {
 
         User user=(User)authentication.getPrincipal();
         ChatResponseDto chatResponseDto = ragService.askQuestion(requestDto,user);

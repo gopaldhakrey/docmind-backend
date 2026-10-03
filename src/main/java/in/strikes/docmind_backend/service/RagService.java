@@ -1,5 +1,6 @@
 package in.strikes.docmind_backend.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import in.strikes.docmind_backend.configuration.AppProperties;
 import in.strikes.docmind_backend.dto.*;
 import in.strikes.docmind_backend.entity.Conversation;
@@ -18,6 +19,8 @@ import org.springframework.ai.vectorstore.filter.Filter;
 import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.Map;
 
 import java.time.LocalDateTime;
 import java.util.Collections;
@@ -25,6 +28,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import in.strikes.docmind_backend.entity.ChatMessage;
+import in.strikes.docmind_backend.entity.MessageType;
+import in.strikes.docmind_backend.repository.ChatMessageRepository;
 
 
 import org.springframework.stereotype.Service;
@@ -39,20 +45,29 @@ public class RagService {
     private final ChatClient chatClient;
 
     private final ConversationRepository conversationRepository;
-
+    private final ChatMessageRepository chatMessageRepository;
+    private final ObjectMapper objectMapper;
 
     //to ask any thing related to document
-    public ChatResponseDto askQuestion(ChatRequestDto request, User user) {
+    public ChatResponseDto askQuestion(ChatRequestDto request, User user) throws JsonProcessingException {
 
         long startTime = System.currentTimeMillis();
 
+        String conversationId = request.getConversationId() != null
+                ? request.getConversationId()
+                : UUID.randomUUID().toString();
 
-        String conversationId = request.getConversationId() != null ? request.getConversationId() : UUID.randomUUID().toString();
+        ensureConversationExists(
+                conversationId,
+                user,
+                request.getQuestion()
+        );
 
-        ensureConversationExists(conversationId, user, request.getQuestion());
-
-        log.info("Processing query: '{}', scoped documentId: {}", request.getQuestion(), request.getDocumentId());
-
+        log.info(
+                "Processing query: '{}', scoped documentId: {}",
+                request.getQuestion(),
+                request.getDocumentId()
+        );
 
         List<Document> similarDocuments = this.retrieveRelevantDocuments(
                 request.getQuestion(),
@@ -62,27 +77,67 @@ public class RagService {
                 user
         );
 
+        List<CitationDto> citationDtos =
+                similarDocuments.stream()
+                        .map(this::mapToCitation)
+                        .toList();
 
-        List<CitationDto> citationDtos = similarDocuments.stream().map(this::mapToCitation).toList();
+        String contextText =
+                buildContextString(similarDocuments);
 
-        String contextText = buildContextString(similarDocuments);
-
-//        String prompt = buildPrompt(request.getQuestion(), contextText);
-
-        //you have to use conversationId to remember the conversation
-        //ChatMemory
-        //ChatMemoryRepository
         String answer = this.chatClient
                 .prompt()
                 .system(s -> s.param("doc_context", contextText))
                 .user(request.getQuestion())
-                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, request.getConversationId()))
-                .call().content();
-        long responseTime = System.currentTimeMillis() - startTime;
-        log.info("Completed Q&A in {} ms with {} citations", responseTime, citationDtos.size());
-        return ChatResponseDto.builder().answer(answer).conversationId(request.getConversationId() != null ? request.getConversationId() : UUID.randomUUID().toString()).citations(citationDtos).responseTimeMs(responseTime).build();
+                .advisors(a ->
+                        a.param(
+                                ChatMemory.CONVERSATION_ID,
+                                conversationId
+                        )
+                )
+                .call()
+                .content();
+        ChatMessage assistantMessage =
+                chatMessageRepository
+                        .findFirstByConversation_IdAndMessageTypeOrderByCreatedAtDesc(
+                                conversationId,
+                                MessageType.ASSISTANT
+                        )
+                        .orElseThrow(() ->
+                                new IllegalStateException(
+                                        "Assistant message was not persisted"
+                                ));
 
+        assistantMessage.setMetadata(
+                objectMapper.writeValueAsString(
+                        Map.of("citations", citationDtos)
+                )
+        );
 
+        chatMessageRepository.save(assistantMessage);
+        Conversation conversation = conversationRepository
+                .findByIdAndUser(conversationId, user)
+                .orElseThrow(() ->
+                        new IllegalArgumentException("Conversation not found"));
+
+        conversation.setUpdatedAt(LocalDateTime.now());
+        conversationRepository.save(conversation);
+
+        long responseTime =
+                System.currentTimeMillis() - startTime;
+
+        log.info(
+                "Completed Q&A in {} ms with {} citations",
+                responseTime,
+                citationDtos.size()
+        );
+
+        return ChatResponseDto.builder()
+                .answer(answer)
+                .conversationId(conversationId)
+                .citations(citationDtos)
+                .responseTimeMs(responseTime)
+                .build();
     }
 
     private void ensureConversationExists(String conversationId, User user, @NotBlank(message = "Question cannot be empty") String question) {
@@ -107,9 +162,18 @@ public class RagService {
     // this streams
     public Flux<String> streamQuestionAnswer(ChatRequestDto requestDto, User user) {
         log.info("Streaming query: '{}'", requestDto.getQuestion());
-        String conversationId = requestDto.getConversationId() != null ? requestDto.getConversationId() : UUID.randomUUID().toString();
+
+        String conversationId = requestDto.getConversationId() != null
+                ? requestDto.getConversationId()
+                : UUID.randomUUID().toString();
+
         requestDto.setConversationId(conversationId);
-        ensureConversationExists(conversationId, user, requestDto.getQuestion());
+
+        ensureConversationExists(
+                conversationId,
+                user,
+                requestDto.getQuestion()
+        );
 
         List<Document> relevantDocuments = retrieveRelevantDocuments(
                 requestDto.getQuestion(),
@@ -118,47 +182,61 @@ public class RagService {
                 requestDto.getMinSimilarity(),
                 user
         );
+
         String contextText = buildContextString(relevantDocuments);
-//        String userPrompt = buildPrompt(requestDto.getQuestion(), contextText);
+        List<CitationDto> citationDtos =
+                relevantDocuments.stream()
+                        .map(this::mapToCitation)
+                        .toList();
+
         return chatClient.prompt()
-                .system(s-> s.param("doc_context",contextText))
+                .system(s -> s.param("doc_context", contextText))
                 .user(requestDto.getQuestion())
-                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, requestDto.getConversationId()))
+                .advisors(a ->
+                        a.param(
+                                ChatMemory.CONVERSATION_ID,
+                                conversationId
+                        )
+                )
                 .stream()
                 .content()
+                .doOnComplete(() -> {
+                    try {
+                        ChatMessage assistantMessage =
+                                chatMessageRepository
+                                        .findFirstByConversation_IdAndMessageTypeOrderByCreatedAtDesc(
+                                                conversationId,
+                                                MessageType.ASSISTANT
+                                        )
+                                        .orElseThrow(() ->
+                                                new IllegalStateException(
+                                                        "Assistant message was not persisted"
+                                                ));
+
+                        assistantMessage.setMetadata(
+                                objectMapper.writeValueAsString(
+                                        Map.of("citations", citationDtos)
+                                )
+                        );
+
+                        chatMessageRepository.save(assistantMessage);
+
+                        log.info(
+                                "Persisted {} citations for streaming conversation {}",
+                                citationDtos.size(),
+                                conversationId
+                        );
+
+                    } catch (Exception e) {
+                        log.error(
+                                "Failed to persist streaming citations for conversation {}",
+                                conversationId,
+                                e
+                        );
+                    }
+                })
                 .concatWith(Flux.just("[DONE]"));
-
-
     }
-
-
-    private String buildPrompt(@NotBlank(message = "Question cannot be empty") String question, String contextText) {
-
-        if (contextText != null && !contextText.isBlank()) {
-            return String.format("""
-                           Document Context:
-                           ---------------------
-                           %s
-                           ---------------------                                        
-                           User Message / Question: %s             
-                           Instructions:
-                           - If the user's question relates to the document context above, prioritize answering using that context and reference key sections.
-                           - If the user is asking a general question, greeting, or discussing topics beyond the document context, respond helpfully and conversationally using your general knowledge while weaving in relevant document context if applicable
-                    
-                    """, contextText, question);
-        } else {
-            return String.format("""
-                       User Message / Question:
-                       %s                         
-                       Instructions:
-                          - Respond helpfully, accurately, and conversationally to the user's message using your broad knowledge base.
-                    
-                    """, question);
-        }
-
-
-    }
-
     private String buildContextString(List<Document> similarDocuments) {
         if (similarDocuments == null || similarDocuments.isEmpty()) {
             return "";

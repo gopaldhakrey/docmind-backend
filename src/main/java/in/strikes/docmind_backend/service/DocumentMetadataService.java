@@ -51,7 +51,7 @@ public class DocumentMetadataService {
                 .status(DocumentStatus.UPLOADING)
                 .fileSize(file.getSize())
                 .createdAt(LocalDateTime.now())
-                //.user(user)
+                .user(user)
                 .build();
 
 

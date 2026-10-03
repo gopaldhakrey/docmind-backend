@@ -15,6 +15,8 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import jakarta.servlet.DispatcherType;
+import org.springframework.http.HttpMethod;
 
 @Configuration
 @RequiredArgsConstructor
@@ -35,17 +37,32 @@ public class SecurityConfig {
                 .cors(Customizer.withDefaults())
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(
-                        auth ->
-                                auth
-                                        .requestMatchers(
-                                                "/api/v1/auth/**",
-                                                "/v3/api-docs/**",
-                                                "/swagger-ui/**",
-                                                "/swagger-ui.html").permitAll()
-                                        .requestMatchers("/api/v1/admin/**").hasRole(Role.ADMIN.toString())
-                                        .requestMatchers("/api/v1/**").hasRole(Role.USER.toString())
-                                        .anyRequest().authenticated()
+                .authorizeHttpRequests(auth -> auth
+                        .dispatcherTypeMatchers(
+                                DispatcherType.ASYNC,
+                                DispatcherType.ERROR
+                        ).permitAll()
+
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+
+                        .requestMatchers(
+                                "/api/v1/auth/**",
+                                "/api/v1/profile/photo/**",
+                                "/v3/api-docs/**",
+                                "/swagger-ui/**",
+                                "/swagger-ui.html"
+                        ).permitAll()
+
+                        .requestMatchers("/api/v1/admin/**")
+                        .hasRole(Role.ADMIN.toString())
+
+                        .requestMatchers("/api/v1/**")
+                        .hasAnyRole(
+                                Role.USER.toString(),
+                                Role.ADMIN.toString()
+                        )
+
+                        .anyRequest().authenticated()
                 )
                 .addFilterAfter(authenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .exceptionHandling(exception ->

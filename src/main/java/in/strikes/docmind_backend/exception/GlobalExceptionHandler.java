@@ -75,7 +75,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<?> handleIllegalArgument(IllegalArgumentException ex) {
-        logger.warn("Illegal argument: {}", ex.getMessage());
+        logger.warn("Illegal argument: {}", ex.getMessage(), ex);
+
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(
                         ApiResponse.builder()
@@ -86,7 +87,6 @@ public class GlobalExceptionHandler {
                                 .build()
                 );
     }
-
 
 //    generalized exception handling
 

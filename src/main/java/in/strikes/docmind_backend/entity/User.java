@@ -29,6 +29,9 @@ public class User {
     @Column(unique = true,nullable = false)
     private  String email;
 
+    @Column(name = "profile_photo_url")
+    private String profilePhotoUrl;
+
     @OneToMany(mappedBy = "user",cascade = CascadeType.ALL,orphanRemoval = true)
     private Set<DocumentMetadata> documentMetadataSet=new LinkedHashSet<>();
 
