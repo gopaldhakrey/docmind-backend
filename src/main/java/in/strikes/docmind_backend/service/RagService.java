@@ -85,36 +85,93 @@ public class RagService {
         String contextText =
                 buildContextString(similarDocuments);
 
-        String answer = this.chatClient
-                .prompt()
-                .system(s -> s.param("doc_context", contextText))
-                .user(request.getQuestion())
-                .advisors(a ->
-                        a.param(
-                                ChatMemory.CONVERSATION_ID,
-                                conversationId
-                        )
-                )
-                .call()
-                .content();
-        ChatMessage assistantMessage =
-                chatMessageRepository
-                        .findFirstByConversation_IdAndMessageTypeOrderByCreatedAtDesc(
-                                conversationId,
-                                MessageType.ASSISTANT
-                        )
-                        .orElseThrow(() ->
-                                new IllegalStateException(
-                                        "Assistant message was not persisted"
-                                ));
+        String answer;
 
-        assistantMessage.setMetadata(
-                objectMapper.writeValueAsString(
-                        Map.of("citations", citationDtos)
-                )
-        );
+        if (similarDocuments.isEmpty()) {
 
-        chatMessageRepository.save(assistantMessage);
+            answer = "I couldn't find relevant information about this in the uploaded document.";
+
+            log.info(
+                    "No relevant document context found for question: '{}'",
+                    request.getQuestion()
+            );
+
+        } else {
+
+            String systemPrompt = """
+            You are DocMind, a document-grounded AI assistant.
+
+            Answer the user's question ONLY using the provided document context.
+
+            Rules:
+            1. Do NOT use general knowledge.
+            2. Do NOT make assumptions or invent information.
+            3. If the answer is not present in the provided document context,
+               say that the information is not available in the uploaded document.
+            4. Keep the answer clear and concise.
+            5. Use Markdown when useful.
+
+            DOCUMENT CONTEXT:
+            %s
+            """.formatted(contextText);
+
+            answer = this.chatClient
+                    .prompt()
+                    .system(systemPrompt)
+                    .user(request.getQuestion())
+                    .advisors(a ->
+                            a.param(
+                                    ChatMemory.CONVERSATION_ID,
+                                    conversationId
+                            )
+                    )
+                    .call()
+                    .content();
+        }
+        ChatMessage assistantMessage;
+
+        if (similarDocuments.isEmpty()) {
+
+            Conversation conversation = conversationRepository
+                    .findByIdAndUser(conversationId, user)
+                    .orElseThrow(() ->
+                            new IllegalArgumentException("Conversation not found"));
+
+            assistantMessage = ChatMessage.builder()
+                    .conversation(conversation)
+                    .messageType(MessageType.ASSISTANT)
+                    .content(answer)
+                    .metadata(
+                            objectMapper.writeValueAsString(
+                                    Map.of("citations", citationDtos)
+                            )
+                    )
+                    .createdAt(LocalDateTime.now())
+                    .build();
+
+            chatMessageRepository.save(assistantMessage);
+
+        } else {
+
+            assistantMessage =
+                    chatMessageRepository
+                            .findFirstByConversation_IdAndMessageTypeOrderByCreatedAtDesc(
+                                    conversationId,
+                                    MessageType.ASSISTANT
+                            )
+                            .orElseThrow(() ->
+                                    new IllegalStateException(
+                                            "Assistant message was not persisted"
+                                    ));
+
+            assistantMessage.setMetadata(
+                    objectMapper.writeValueAsString(
+                            Map.of("citations", citationDtos)
+                    )
+            );
+
+            chatMessageRepository.save(assistantMessage);
+        }
         Conversation conversation = conversationRepository
                 .findByIdAndUser(conversationId, user)
                 .orElseThrow(() ->
@@ -184,13 +241,31 @@ public class RagService {
         );
 
         String contextText = buildContextString(relevantDocuments);
+
         List<CitationDto> citationDtos =
                 relevantDocuments.stream()
                         .map(this::mapToCitation)
                         .toList();
 
+        String systemPrompt = """
+        You are DocMind, a document-grounded AI assistant.
+
+        Answer the user's question ONLY using the provided document context.
+
+        Rules:
+        1. Do NOT use general knowledge.
+        2. Do NOT make assumptions or invent information.
+        3. If the answer is not present in the provided document context,
+           say that the information is not available in the uploaded document.
+        4. Keep the answer clear and concise.
+        5. Use Markdown when useful.
+
+        DOCUMENT CONTEXT:
+        %s
+        """.formatted(contextText);
+
         return chatClient.prompt()
-                .system(s -> s.param("doc_context", contextText))
+                .system(systemPrompt)
                 .user(requestDto.getQuestion())
                 .advisors(a ->
                         a.param(
@@ -332,6 +407,20 @@ public class RagService {
         try {
             List<Document> documents = vectorStore.similaritySearch(searchRequestBuilder.build());
             log.info("Retrieved {} chunks for query: '{}' (scoped docId: {})", documents.size(), query, documentId);
+            documents.forEach(doc -> {
+                Object distance = doc.getMetadata().get("distance");
+
+                if (distance instanceof Number d) {
+                    double similarity = 1.0 - d.doubleValue();
+
+                    log.info(
+                            "RAG similarity | query='{}' | similarity={} | file={}",
+                            query,
+                            similarity,
+                            doc.getMetadata().get("fileName")
+                    );
+                }
+            });
             return documents;
         } catch (Exception e) {
             log.error("Similarity search failed for query: '{}'", query, e);

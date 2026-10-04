@@ -12,17 +12,7 @@ spring:
       hibernate:
         format_sql: false
 
-  mail:
-    host: smtp.gmail.com
-    port: 587
-    username: ${MAIL_USERNAME}
-    password: ${MAIL_PASSWORD}
-    properties:
-      mail:
-        smtp:
-          auth: true
-          starttls:
-            enable: true
+
 
   ai:
     google:
@@ -53,6 +43,9 @@ spring:
 
 app:
   frontend-url: ${FRONTEND_URL}
+  email:
+    resend-api-key: ${RESEND_API_KEY}
+    from: onboarding@resend.dev
   rag:
     chunk-size: 700
     top-k: 5
