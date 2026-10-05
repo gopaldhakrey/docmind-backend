@@ -73,6 +73,11 @@ app:
     allowed-methods: GET,POST,PUT,PATCH,DELETE,OPTION
     allowed-headers: "*"
 
+cloudinary:
+  cloud-name: ${CLOUDINARY_CLOUD_NAME}
+  api-key: ${CLOUDINARY_API_KEY}
+  api-secret: ${CLOUDINARY_API_SECRET}
+
 
   #JWT Authentication
 
